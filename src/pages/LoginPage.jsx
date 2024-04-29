@@ -51,7 +51,7 @@ const LoginPage = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password })
       });
-      const responseBody = await response.text(); // Lire la réponse comme texte pour éviter les erreurs de JSON
+      const responseBody = await response.text(); 
       if (response.ok) {
         setMessage('Registration successful, please log in.');
         setTabIndex(0);

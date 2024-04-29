@@ -1,19 +1,42 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { Button, Typography, Paper, Box, CircularProgress, Select, MenuItem } from '@mui/material';
+import { Button, Typography, Paper, Box, CircularProgress, Select, MenuItem, Alert } from '@mui/material';
 import { EventSourcePolyfill } from 'event-source-polyfill';
 
 const MatchPage = () => {
   const { id } = useParams();
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [matchDetails, setMatchDetails] = useState(null);
   const [eventSource, setEventSource] = useState(null);
   const [selectedMove, setSelectedMove] = useState('');
-  const [turnId, setTurnId] = useState(null); // To keep track of the current turn ID
+  const [gameStatus, setGameStatus] = useState('Waiting for match updates...');
+  const [error, setError] = useState('');
+
+  const fetchMatchDetails = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/matches/${id}`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+        },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setMatchDetails(data);
+        setLoading(false);
+      } else {
+        setError('Failed to load match details.');
+        setLoading(false);
+      }
+    } catch (error) {
+      setError('Network error or server is down.');
+      setLoading(false);
+    }
+  };
 
   const setupEventSource = () => {
     if (eventSource) {
-      eventSource.close(); // Close the existing event source if open
+      eventSource.close(); 
     }
 
     const es = new EventSourcePolyfill(`${import.meta.env.VITE_API_URL}/matches/${id}/subscribe`, {
@@ -27,45 +50,51 @@ const MatchPage = () => {
       handleEvent(data);
     };
 
-    es.onerror = (error) => {
-      console.error('SSE connection error:', error);
-      setError('Connection error, will retry...');
+    es.onerror = () => {
+      setError('SSE connection error, will retry...');
       es.close();
-      setTimeout(setupEventSource, 5000); // Retry connection after 5 seconds
+      setTimeout(setupEventSource, 5000); 
     };
 
     setEventSource(es);
   };
 
   useEffect(() => {
+    fetchMatchDetails();
     setupEventSource();
-    return () => eventSource && eventSource.close(); // Cleanup event source on unmount
-  }, [id]); // Ensure the effect runs again if the match ID changes
+    return () => eventSource && eventSource.close(); 
+  }, [id]); 
 
   const handleEvent = (data) => {
     console.log('Event Received:', data);
     switch (data.type) {
       case 'NEW_TURN':
-        setTurnId(data.payload.turnId);
+        setGameStatus(`It's your turn!`);
         break;
       case 'PLAYER_MOVED':
+        setGameStatus(`Waiting for opponent's move...`);
+        break;
       case 'TURN_ENDED':
+        setGameStatus(`Turn ended. Winner: ${data.payload.winner}`);
+        break;
       case 'MATCH_ENDED':
-        setError(`Event: ${data.type} - Details: ${JSON.stringify(data.payload)}`);
+        setGameStatus(`Match ended. Winner: ${data.payload.winner}`);
+        setLoading(false); // Stop loading when match ends
         break;
       default:
-        console.log('Unhandled event type:', data.type);
+        setGameStatus('Update received from game.');
     }
   };
 
   const playTurn = async () => {
-    if (!turnId) {
-      setError("No active turn to play.");
+    if (!matchDetails || !matchDetails.turns.length) {
+      setError("It's not currently your turn to play.");
       return;
     }
 
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/matches/${id}/turns/${turnId}`, {
+      const lastTurnId = matchDetails.turns[matchDetails.turns.length - 1]._id;
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/matches/${id}/turns/${lastTurnId}`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`,
@@ -73,9 +102,11 @@ const MatchPage = () => {
         },
         body: JSON.stringify({ move: selectedMove }),
       });
-      const responseData = await response.json();
       if (!response.ok) {
+        const responseData = await response.json();
         setError(responseData.message || "Failed to play turn.");
+      } else {
+        setGameStatus('Move submitted, waiting for next event...');
       }
     } catch (error) {
       console.error('Network error:', error);
@@ -92,7 +123,8 @@ const MatchPage = () => {
         <CircularProgress />
       ) : (
         <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-          {error && <Typography color="error">{error}</Typography>}
+          {error && <Alert severity="error">{error}</Alert>}
+          <Typography>{gameStatus}</Typography>
           <Select
             value={selectedMove}
             onChange={(e) => setSelectedMove(e.target.value)}

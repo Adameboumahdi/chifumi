@@ -1,21 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { Button, Typography, Paper, Box, CircularProgress, Select, MenuItem } from '@mui/material';
-import EventSource from 'event-source-polyfill';
+import { EventSourcePolyfill } from 'event-source-polyfill';
 
 const MatchPage = () => {
   const { id } = useParams();
   const [loading, setLoading] = useState(true);
-  const [result, setResult] = useState('');
+  const [error, setError] = useState('');
   const [eventSource, setEventSource] = useState(null);
   const [selectedMove, setSelectedMove] = useState('');
+  const [turnId, setTurnId] = useState(null); // To keep track of the current turn ID
 
   const setupEventSource = () => {
     if (eventSource) {
       eventSource.close(); // Close the existing event source if open
     }
 
-    const es = new EventSource(`${import.meta.env.VITE_API_URL}/matches/${id}/subscribe`, {
+    const es = new EventSourcePolyfill(`${import.meta.env.VITE_API_URL}/matches/${id}/subscribe`, {
       headers: {
         'Authorization': `Bearer ${localStorage.getItem('token')}`,
       },
@@ -24,11 +25,11 @@ const MatchPage = () => {
     es.onmessage = (event) => {
       const data = JSON.parse(event.data);
       handleEvent(data);
-      setLoading(false); // Stop loading when the first event is received
     };
 
     es.onerror = (error) => {
       console.error('SSE connection error:', error);
+      setError('Connection error, will retry...');
       es.close();
       setTimeout(setupEventSource, 5000); // Retry connection after 5 seconds
     };
@@ -39,16 +40,18 @@ const MatchPage = () => {
   useEffect(() => {
     setupEventSource();
     return () => eventSource && eventSource.close(); // Cleanup event source on unmount
-  }, []);
+  }, [id]); // Ensure the effect runs again if the match ID changes
 
   const handleEvent = (data) => {
     console.log('Event Received:', data);
     switch (data.type) {
       case 'NEW_TURN':
+        setTurnId(data.payload.turnId);
+        break;
       case 'PLAYER_MOVED':
       case 'TURN_ENDED':
       case 'MATCH_ENDED':
-        setResult(`Latest Update: ${data.type} - Details: ${JSON.stringify(data.payload)}`);
+        setError(`Event: ${data.type} - Details: ${JSON.stringify(data.payload)}`);
         break;
       default:
         console.log('Unhandled event type:', data.type);
@@ -56,8 +59,13 @@ const MatchPage = () => {
   };
 
   const playTurn = async () => {
+    if (!turnId) {
+      setError("No active turn to play.");
+      return;
+    }
+
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/matches/${id}/turns`, {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/matches/${id}/turns/${turnId}`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`,
@@ -65,14 +73,13 @@ const MatchPage = () => {
         },
         body: JSON.stringify({ move: selectedMove }),
       });
-      if (response.ok) {
-        console.log('Turn created successfully');
-      } else {
-        const errorData = await response.json();
-        console.error('Failed to create turn:', errorData);
+      const responseData = await response.json();
+      if (!response.ok) {
+        setError(responseData.message || "Failed to play turn.");
       }
     } catch (error) {
       console.error('Network error:', error);
+      setError('Network error when trying to play turn.');
     }
   };
 
@@ -85,7 +92,7 @@ const MatchPage = () => {
         <CircularProgress />
       ) : (
         <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-          <Typography>{result}</Typography>
+          {error && <Typography color="error">{error}</Typography>}
           <Select
             value={selectedMove}
             onChange={(e) => setSelectedMove(e.target.value)}

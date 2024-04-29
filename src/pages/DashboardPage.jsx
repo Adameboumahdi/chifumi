@@ -77,6 +77,15 @@ const DashboardPage = () => {
     }
   };
 
+  const handleReJoinMatch = async (matchId) => {
+    try {
+        navigate(`/partie/${matchId}`);
+    } catch (error) {
+        setError('Failed to navigate to the match.');
+    }
+};
+
+
   return (
     <Paper elevation={3} sx={{ padding: 2 }}>
       <Typography variant="h4" gutterBottom>
@@ -91,7 +100,7 @@ const DashboardPage = () => {
           </Button>
           <List>
             {matches.map((match) => (
-              <ListItem key={match._id} button onClick={() => handleJoinMatch(match._id)}>
+              <ListItem key={match._id} onClick={() => handleReJoinMatch(match._id)}>
                 <ListItemText
                   primary={`Match ID: ${match._id}`}
                   secondary={match.user2 ? `Player 2: ${match.user2.username}` : 'Waiting for Player 2'}

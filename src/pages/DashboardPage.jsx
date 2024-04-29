@@ -19,6 +19,11 @@ const DashboardPage = () => {
         if (response.ok) {
           const data = await response.json();
           setMatches(data);
+          // Automatically attempt to join a match that is waiting for a second player
+          const availableMatch = data.find(match => !match.user2);
+          if (availableMatch) {
+            handleJoinMatch(availableMatch._id);
+          }
         } else {
           setError('Failed to load matches.');
         }
@@ -33,17 +38,7 @@ const DashboardPage = () => {
   }, []);
 
   const handleCreateMatch = async () => {
-    // Vérifier si l'utilisateur a déjà une partie en cours
-    const hasActiveMatch = matches.some(match => !match.user2);
-
-    // Si l'utilisateur a déjà une partie en cours, afficher un message d'erreur
-    if (hasActiveMatch) {
-      setError('You already have an active match.');
-      return;
-    }
-
     try {
-      // Si l'utilisateur n'a pas de partie en cours, créer une nouvelle partie
       const response = await fetch(`${import.meta.env.VITE_API_URL}/matches`, {
         method: 'POST',
         headers: {
@@ -52,10 +47,10 @@ const DashboardPage = () => {
       });
       if (response.ok) {
         const newMatch = await response.json();
-        setMatches([...matches, newMatch]);
-      } else if (response.status === 400) {
-        const errorData = await response.json();
-        setError(errorData.match || 'Failed to create a new match.');
+        setMatches(prevMatches => [...prevMatches, newMatch]);
+        navigate(`/partie/${newMatch._id}`);
+      } else {
+        setError('Failed to create a new match.');
       }
     } catch (error) {
       setError('Network error or server is down.');
@@ -63,28 +58,22 @@ const DashboardPage = () => {
   };
 
   const handleJoinMatch = async (matchId) => {
-    // Check if the match is waiting for a second player
-    const match = matches.find(m => m._id === matchId && !m.user2);
-    if (match) {
-      try {
-        const response = await fetch(`${import.meta.env.VITE_API_URL}/matches/${matchId}`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          },
-        });
-        if (response.ok) {
-          const updatedMatch = await response.json();
-          setMatches(matches.map(m => m._id === matchId ? updatedMatch : m));
-          navigate(`/partie/${matchId}`);
-        } else {
-          setError('Failed to join the match.');
-        }
-      } catch (error) {
-        setError('Network error or server is down.');
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/matches/${matchId}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+        },
+      });
+      if (response.ok) {
+        const updatedMatch = await response.json();
+        setMatches(matches.map(m => m._id === matchId ? updatedMatch : m));
+        navigate(`/partie/${matchId}`);
+      } else {
+        setError('Failed to join the match.');
       }
-    } else {
-      navigate(`/partie/${matchId}`);
+    } catch (error) {
+      setError('Network error or server is down.');
     }
   };
 

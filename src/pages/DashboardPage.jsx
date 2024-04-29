@@ -33,7 +33,17 @@ const DashboardPage = () => {
   }, []);
 
   const handleCreateMatch = async () => {
+    // Vérifier si l'utilisateur a déjà une partie en cours
+    const hasActiveMatch = matches.some(match => !match.user2);
+
+    // Si l'utilisateur a déjà une partie en cours, afficher un message d'erreur
+    if (hasActiveMatch) {
+      setError('You already have an active match.');
+      return;
+    }
+
     try {
+      // Si l'utilisateur n'a pas de partie en cours, créer une nouvelle partie
       const response = await fetch(`${import.meta.env.VITE_API_URL}/matches`, {
         method: 'POST',
         headers: {

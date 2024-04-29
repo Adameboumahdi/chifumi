@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { Button, Typography, Paper, Box, CircularProgress } from '@mui/material';
+import { Button, Typography, Paper, Box, CircularProgress, Select, MenuItem } from '@mui/material';
 import EventSource from 'event-source-polyfill';
 
 const MatchPage = () => {
@@ -8,6 +8,7 @@ const MatchPage = () => {
   const [loading, setLoading] = useState(true);
   const [result, setResult] = useState('');
   const [eventSource, setEventSource] = useState(null);
+  const [selectedMove, setSelectedMove] = useState('');
 
   const setupEventSource = () => {
     if (eventSource) {
@@ -54,18 +55,24 @@ const MatchPage = () => {
     }
   };
 
-  const playTurn = async (move) => {
-    const response = await fetch(`${import.meta.env.VITE_API_URL}/matches/${id}/turns`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ move })
-    });
-
-    if (!response.ok) {
-      console.error('Failed to play turn');
+  const playTurn = async () => {
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/matches/${id}/turns`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ move: selectedMove }),
+      });
+      if (response.ok) {
+        console.log('Turn created successfully');
+      } else {
+        const errorData = await response.json();
+        console.error('Failed to create turn:', errorData);
+      }
+    } catch (error) {
+      console.error('Network error:', error);
     }
   };
 
@@ -79,9 +86,18 @@ const MatchPage = () => {
       ) : (
         <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
           <Typography>{result}</Typography>
-          <Button variant="contained" onClick={() => playTurn('rock')}>Rock</Button>
-          <Button variant="contained" onClick={() => playTurn('paper')}>Paper</Button>
-          <Button variant="contained" onClick={() => playTurn('scissors')}>Scissors</Button>
+          <Select
+            value={selectedMove}
+            onChange={(e) => setSelectedMove(e.target.value)}
+            sx={{ minWidth: 120, mt: 2 }}
+          >
+            <MenuItem value="rock">Rock</MenuItem>
+            <MenuItem value="paper">Paper</MenuItem>
+            <MenuItem value="scissors">Scissors</MenuItem>
+          </Select>
+          <Button variant="contained" onClick={playTurn} sx={{ mt: 2 }}>
+            Play Turn
+          </Button>
         </Box>
       )}
     </Paper>

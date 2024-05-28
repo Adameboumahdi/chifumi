@@ -23,20 +23,18 @@ const MatchPage = () => {
       if (response.ok) {
         const data = await response.json();
         setMatchDetails(data);
-        setLoading(false);
       } else {
         setError('Failed to load match details.');
-        setLoading(false);
       }
     } catch (error) {
       setError('Network error or server is down.');
-      setLoading(false);
     }
+    setLoading(false);
   };
 
   const setupEventSource = () => {
     if (eventSource) {
-      eventSource.close(); 
+      eventSource.close();
     }
 
     const es = new EventSourcePolyfill(`${import.meta.env.VITE_API_URL}/matches/${id}/subscribe`, {
@@ -53,7 +51,7 @@ const MatchPage = () => {
     es.onerror = () => {
       setError('SSE connection error, will retry...');
       es.close();
-      setTimeout(setupEventSource, 5000); 
+      setTimeout(setupEventSource, 5000);
     };
 
     setEventSource(es);
@@ -62,8 +60,8 @@ const MatchPage = () => {
   useEffect(() => {
     fetchMatchDetails();
     setupEventSource();
-    return () => eventSource && eventSource.close(); 
-  }, [id]); 
+    return () => eventSource && eventSource.close();
+  }, [id]);
 
   const handleEvent = (data) => {
     console.log('Event Received:', data);
@@ -79,7 +77,11 @@ const MatchPage = () => {
         break;
       case 'MATCH_ENDED':
         setGameStatus(`Match ended. Winner: ${data.payload.winner}`);
-        setLoading(false); // Stop loading when match ends
+        setLoading(false);
+        break;
+      case 'PLAYER1_JOIN':
+      case 'PLAYER2_JOIN':
+        setGameStatus(`${data.payload.user} joined the match`);
         break;
       default:
         setGameStatus('Update received from game.');
@@ -87,7 +89,7 @@ const MatchPage = () => {
   };
 
   const playTurn = async () => {
-    if (!matchDetails || !matchDetails.turns.length) {
+    if (!matchDetails || matchDetails.turns.some(turn => turn.status === 'active')) {
       setError("It's not currently your turn to play.");
       return;
     }

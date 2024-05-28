@@ -23,13 +23,15 @@ const MatchPage = () => {
       if (response.ok) {
         const data = await response.json();
         setMatchDetails(data);
+        setLoading(false);
       } else {
         setError('Failed to load match details.');
+        setLoading(false);
       }
     } catch (error) {
       setError('Network error or server is down.');
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const setupEventSource = () => {
@@ -67,21 +69,25 @@ const MatchPage = () => {
     console.log('Event Received:', data);
     switch (data.type) {
       case 'NEW_TURN':
-        setGameStatus(`It's your turn!`);
+        setMatchDetails((prevDetails) => ({
+          ...prevDetails,
+          currentTurn: data.payload.turnId,
+        }));
+        setGameStatus("It's your turn!");
         break;
       case 'PLAYER_MOVED':
-        setGameStatus(`Waiting for opponent's move...`);
+        setGameStatus("Waiting for opponent's move...");
         break;
       case 'TURN_ENDED':
-        setGameStatus(`Turn ended. Winner: ${data.payload.winner}`);
+        setMatchDetails((prevDetails) => ({
+          ...prevDetails,
+          currentTurn: data.payload.newTurnId,
+        }));
+        setGameStatus(`Turn ended. ${data.payload.winner === 'draw' ? 'It\'s a draw!' : `Winner: ${data.payload.winner}`}`);
         break;
       case 'MATCH_ENDED':
-        setGameStatus(`Match ended. Winner: ${data.payload.winner}`);
+        setGameStatus(`Match ended. ${data.payload.winner === 'draw' ? 'It\'s a draw!' : `Winner: ${data.payload.winner}`}`);
         setLoading(false);
-        break;
-      case 'PLAYER1_JOIN':
-      case 'PLAYER2_JOIN':
-        setGameStatus(`${data.payload.user} joined the match`);
         break;
       default:
         setGameStatus('Update received from game.');
@@ -89,13 +95,13 @@ const MatchPage = () => {
   };
 
   const playTurn = async () => {
-    if (!matchDetails || matchDetails.turns.some(turn => turn.status === 'active')) {
+    if (!matchDetails || !matchDetails.currentTurn || matchDetails.user1.username !== localStorage.getItem('username')) {
       setError("It's not currently your turn to play.");
       return;
     }
 
     try {
-      const lastTurnId = matchDetails.turns[matchDetails.turns.length - 1]._id;
+      const lastTurnId = matchDetails.currentTurn;
       const response = await fetch(`${import.meta.env.VITE_API_URL}/matches/${id}/turns/${lastTurnId}`, {
         method: 'POST',
         headers: {

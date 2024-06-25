@@ -11,6 +11,8 @@ const MatchPage = () => {
   const [selectedMove, setSelectedMove] = useState('');
   const [gameStatus, setGameStatus] = useState('Waiting for match updates...');
   const [error, setError] = useState('');
+  const [player1Wins, setPlayer1Wins] = useState(0);
+  const [player2Wins, setPlayer2Wins] = useState(0);
 
   const fetchMatchDetails = async () => {
     setLoading(true);
@@ -23,15 +25,17 @@ const MatchPage = () => {
       if (response.ok) {
         const data = await response.json();
         setMatchDetails(data);
-        setLoading(false);
+        setPlayer1Wins(data.player1Wins || 0);
+        setPlayer2Wins(data.player2Wins || 0);
+        setError('');
       } else {
-        setError('Failed to load match details.');
-        setLoading(false);
+        const errorData = await response.json();
+        setError(errorData.message || 'Failed to load match details.');
       }
     } catch (error) {
       setError('Network error or server is down.');
-      setLoading(false);
     }
+    setLoading(false);
   };
 
   const setupEventSource = () => {
@@ -69,25 +73,23 @@ const MatchPage = () => {
     console.log('Event Received:', data);
     switch (data.type) {
       case 'NEW_TURN':
-        setMatchDetails((prevDetails) => ({
-          ...prevDetails,
-          currentTurn: data.payload.turnId,
-        }));
         setGameStatus("It's your turn!");
         break;
       case 'PLAYER_MOVED':
         setGameStatus("Waiting for opponent's move...");
         break;
       case 'TURN_ENDED':
-        setMatchDetails((prevDetails) => ({
-          ...prevDetails,
-          currentTurn: data.payload.newTurnId,
-        }));
-        setGameStatus(`Turn ended. ${data.payload.winner === 'draw' ? 'It\'s a draw!' : `Winner: ${data.payload.winner}`}`);
+        setGameStatus(`Turn ended. Winner: ${data.payload.winner}`);
+        fetchMatchDetails();
         break;
       case 'MATCH_ENDED':
-        setGameStatus(`Match ended. ${data.payload.winner === 'draw' ? 'It\'s a draw!' : `Winner: ${data.payload.winner}`}`);
+        setGameStatus(`Match ended. Winner: ${data.payload.winner}`);
         setLoading(false);
+        fetchMatchDetails();
+        break;
+      case 'PLAYER1_JOIN':
+      case 'PLAYER2_JOIN':
+        setGameStatus(`${data.payload.user} joined the match`);
         break;
       default:
         setGameStatus('Update received from game.');
@@ -95,14 +97,22 @@ const MatchPage = () => {
   };
 
   const playTurn = async () => {
-    if (!matchDetails || !matchDetails.currentTurn || matchDetails.user1.username !== localStorage.getItem('username')) {
+    if (!matchDetails || !matchDetails.currentTurnId) {
       setError("It's not currently your turn to play.");
       return;
     }
 
+    const currentUserId = localStorage.getItem('userId');
+
+    const currentTurn = matchDetails.turns.find(turn => turn._id === matchDetails.currentTurnId);
+
+    if (currentTurn && currentTurn.moves.some(move => move.playerId === currentUserId)) {
+      setError("You have already played your move for this turn.");
+      return;
+    }
+
     try {
-      const lastTurnId = matchDetails.currentTurn;
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/matches/${id}/turns/${lastTurnId}`, {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/matches/${id}/turns/${matchDetails.currentTurnId}`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`,
@@ -110,11 +120,23 @@ const MatchPage = () => {
         },
         body: JSON.stringify({ move: selectedMove }),
       });
+
       if (!response.ok) {
         const responseData = await response.json();
         setError(responseData.message || "Failed to play turn.");
       } else {
+        const updatedMatchDetails = await response.json();
+        setMatchDetails(updatedMatchDetails);
+        setPlayer1Wins(updatedMatchDetails.player1Wins || 0);
+        setPlayer2Wins(updatedMatchDetails.player2Wins || 0);
+
         setGameStatus('Move submitted, waiting for next event...');
+        setError('');
+        if (updatedMatchDetails.player1Wins >= 3) {
+          setGameStatus('Player 1 wins the match!');
+        } else if (updatedMatchDetails.player2Wins >= 3) {
+          setGameStatus('Player 2 wins the match!');
+        }
       }
     } catch (error) {
       console.error('Network error:', error);
@@ -133,6 +155,8 @@ const MatchPage = () => {
         <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
           {error && <Alert severity="error">{error}</Alert>}
           <Typography>{gameStatus}</Typography>
+          <Typography>Player 1 Wins: {player1Wins}</Typography>
+          <Typography>Player 2 Wins: {player2Wins}</Typography>
           <Select
             value={selectedMove}
             onChange={(e) => setSelectedMove(e.target.value)}
